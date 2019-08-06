@@ -38,7 +38,6 @@ named!(then_parser<&str, &str>,
     delimited!(alt!(tag!("Then") | tag!("And")), take_until!("\n"), char!('\n'))
 );
 
-
 /// Note: Not working with whitespace right now.  You have to trim.  Example code of it working:
 /// ```
 /// use std::fs::File;
@@ -85,10 +84,10 @@ mod tests {
     use super::build_outline;
     use super::given_parser;
     use super::scenario_outline_parser;
-    use super::ScenarioOutline;
     use super::tag_feature_parser;
     use super::then_parser;
     use super::when_parser;
+    use super::ScenarioOutline;
     use std::fs::File;
     use std::io::{BufRead, BufReader, Error, ErrorKind};
     use std::path::Path;
@@ -160,25 +159,25 @@ mod tests {
         let buffered = BufReader::new(file);
         let lines = buffered.lines();
         let mut file_str = "".to_string();
-        
+
         for l in lines {
-            file_str = file_str +  l.unwrap().trim() + "\n"
+            file_str = file_str + l.unwrap().trim() + "\n"
         }
 
         let mut expected_vec = Vec::new();
         expected_vec.push("smoke");
         expected_vec.push("wip");
         let str_vec = expected_vec.iter().map(|&x| x.to_string()).collect();
-        
+
         let got = build_outline(&file_str).unwrap();
-        let expected =  ScenarioOutline{
-                feature: "Fake Test Stuff".to_string(), 
-                given: "I have a login".to_string(), 
-                scenario:"This is a fake scenario".to_string(), 
-                tags: str_vec,
-                when: "I type in a password and click login".to_string(),
-                then: "the page redirects".to_string(),
-            };
+        let expected = ScenarioOutline {
+            feature: "Fake Test Stuff".to_string(),
+            given: "I have a login".to_string(),
+            scenario: "This is a fake scenario".to_string(),
+            tags: str_vec,
+            when: "I type in a password and click login".to_string(),
+            then: "the page redirects".to_string(),
+        };
 
         assert_eq!(got.0, "");
         assert_eq!(got.1.feature, expected.feature);
