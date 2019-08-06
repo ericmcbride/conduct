@@ -89,8 +89,7 @@ mod tests {
     use super::when_parser;
     use super::ScenarioOutline;
     use std::fs::File;
-    use std::io::{BufRead, BufReader, Error, ErrorKind};
-    use std::path::Path;
+    use std::io::{BufRead, BufReader};
 
     #[test]
     fn test_tag_feature_parser_with_tags() {
