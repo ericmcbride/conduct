@@ -1,4 +1,9 @@
-use nom::{sequence::tuple, IResult};
+use nom::branch::alt;
+use nom::bytes::complete::{tag, take_until};
+use nom::combinator::opt;
+use nom::multi::many1;
+use nom::sequence::{delimited, preceded};
+use nom::IResult;
 
 #[derive(Debug)]
 pub struct ScenarioOutline {
@@ -10,180 +15,152 @@ pub struct ScenarioOutline {
     then: String,
 }
 
-named!(scenario_outline_parser<&str, &str>,
-    delimited!(tag!("Scenario Outline:"), take_until!("\n"), char!('\n'))
-);
+fn ws(i: &str) -> IResult<&str, &str> {
+    tag("\n")(i)
+}
 
-named!(tag_feature_parser<&str, (Vec<&str>, &str)>,
-    alt!(
-        many_till!(
-            delimited!(tag!("@"), take_until!("\n"), char!('\n')),
-            delimited!(tag!("Feature:"), take_until!("\n"), char!('\n'))
-    ) | many_till!(
-            delimited!(tag!("Feature:"), take_until!("\n"), char!('\n')),
-            tag!("\n")
-        )
-    )
-);
+fn until_n(i: &str) -> IResult<&str, &str> {
+    take_until("\n")(i)
+}
 
-named!(given_parser<&str, &str>,
-    delimited!(tag!("Given"), take_until!("\n"), char!('\n'))
-);
+fn language_parser(i: &str) -> IResult<&str, Option<&str>> {
+    opt(delimited(tag("# language:"), until_n, ws))(i)
+}
 
-named!(when_parser<&str, &str>,
-    delimited!(tag!("When"), is_not!("\n"), char!('\n'))
-);
+fn tag_parser(i: &str) -> IResult<&str, Option<Vec<&str>>> {
+    opt(many1(delimited(tag("@"), until_n, ws)))(i)
+}
 
-named!(then_parser<&str, &str>,
-    delimited!(alt!(tag!("Then") | tag!("And")), take_until!("\n"), char!('\n'))
-);
+fn comment_parser(i: &str) -> IResult<&str, Option<&str>> {
+    opt(delimited(tag("#"), until_n, ws))(i)
+}
 
-/// Note: Not working with whitespace right now.  You have to trim.  Example code of it working:
-/// ```
-/// use std::fs::File;
-/// use std::io::{BufRead, BufReader, Error, ErrorKind};
-/// use std::path::Path;
-/// use conduct::parse::build_outline;
-///
-/// let filename = "src/foo.feature";
-/// let file = File::open(filename).unwrap();
-/// let buffered = BufReader::new(file);
-/// let lines = buffered.lines();
-///
-/// let mut file_str = "".to_string();
-/// for l in lines {
-///     file_str = file_str +  l.unwrap().trim() + "\n"
-/// }
-/// let scenario = build_outline(&file_str).unwrap();
-/// println!("Scenario {:?}", scenario);
-///```
-pub fn build_outline(i: &str) -> IResult<&str, ScenarioOutline> {
-    let (input, (tags_feature, scenario, given, when, then)) = tuple((
-        tag_feature_parser,
-        scenario_outline_parser,
-        given_parser,
-        when_parser,
-        then_parser,
-    ))(i)?;
+fn feature_parser(i: &str) -> IResult<&str, &str> {
+    delimited(tag("Feature:"), until_n, ws)(i)
+}
 
-    Ok((
-        input,
-        ScenarioOutline {
-            scenario: scenario.trim().to_string(),
-            tags: tags_feature.0.iter().map(|&x| x.to_string()).collect(),
-            feature: tags_feature.1.trim().to_string(),
-            given: given.trim().to_string(),
-            when: when.trim().to_string(),
-            then: then.trim().to_string(),
-        },
-    ))
+fn scenario_parser(i: &str) -> IResult<&str, &str> {
+    delimited(tag("Scenario Outline:"), until_n, ws)(i)
+}
+
+fn given_parser(i: &str) -> IResult<&str, Vec<&str>> {
+    many1(delimited(tag("Given"), until_n, ws))(i)
+}
+
+fn when_parser(i: &str) -> IResult<&str, Vec<&str>> {
+    many1(delimited(tag("When"), until_n, ws))(i)
+}
+
+fn then_parser(i: &str) -> IResult<&str, Vec<&str>> {
+    many1(delimited(tag("Then"), until_n, ws))(i)
+}
+
+fn and_parser(i: &str) -> IResult<&str, Vec<&str>> {
+    many1(delimited(tag("And"), until_n, ws))(i)
+}
+
+fn then_and_parser(i: &str) -> IResult<&str, Vec<&str>> {
+    alt((then_parser, and_parser))(i)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::build_outline;
+    use super::and_parser;
+    use super::comment_parser;
+    use super::feature_parser;
+    use super::scenario_parser;
     use super::given_parser;
-    use super::scenario_outline_parser;
-    use super::tag_feature_parser;
+    use super::language_parser;
+    use super::tag_parser;
     use super::then_parser;
+    use super::until_n;
     use super::when_parser;
-    use super::ScenarioOutline;
-    use std::fs::File;
-    use std::io::{BufRead, BufReader};
+    use super::ws;
+
 
     #[test]
-    fn test_tag_feature_parser_with_tags() {
+    fn test_language_parser() {
+        assert_eq!(
+            language_parser("# language: en\n").unwrap(),
+            ("", (Some(" en")))
+        )
+    }
+
+    #[test]
+    fn test_comment_parser() {
+        assert_eq!(
+            comment_parser("# this is a comment\n").unwrap(),
+            ("", Some(" this is a comment"))
+        )
+    }
+
+    #[test]
+    fn test_tag_parser() {
         let mut test_vec = Vec::new();
         test_vec.push("foo");
         test_vec.push("bar");
 
         assert_eq!(
-            tag_feature_parser("@foo\n@bar\nFeature: This is my test feature\n").unwrap(),
-            ("", (test_vec, " This is my test feature")),
+            tag_parser("@foo\n@bar\nFeature: This is my test feature\n").unwrap(),
+            ("Feature: This is my test feature\n", Some(test_vec)),
         )
     }
 
     #[test]
-    fn test_tag_feature_parser_without_tags() {
+    fn test_feature_parser() {
+        let mut test_vec = Vec::new();
+        test_vec.push(" This is my test feature");
         assert_eq!(
-            tag_feature_parser("Feature: This is my test feature\n").unwrap(),
-            ("", (Vec::new(), " This is my test feature"))
+            feature_parser("Feature: This is my test feature\n").unwrap(),
+            ("", " This is my test feature")
         )
     }
 
     #[test]
-    fn test_scenario_outline_parser() {
+    fn test_scenario_parser() {
         assert_eq!(
-            scenario_outline_parser("Scenario Outline: This is my outline\n").unwrap(),
+            scenario_parser("Scenario Outline: This is my outline\n").unwrap(),
             ("", " This is my outline")
         )
     }
 
     #[test]
     fn test_given_parser() {
+        let mut test_vec = Vec::new();
+        test_vec.push(" I have a task");
         assert_eq!(
             given_parser("Given I have a task\n").unwrap(),
-            ("", " I have a task")
+            ("", test_vec)
         )
     }
 
     #[test]
     fn test_when_parser() {
+        let mut test_vec = Vec::new();
+        test_vec.push(" I click a button");
         assert_eq!(
             when_parser("When I click a button\n").unwrap(),
-            ("", " I click a button")
+            ("", test_vec)
         )
     }
 
     #[test]
     fn test_then_parser() {
+        let mut test_vec = Vec::new();
+        test_vec.push(" i do some stuff");
         assert_eq!(
             then_parser("Then i do some stuff\n").unwrap(),
-            ("", " i do some stuff")
+            ("", test_vec)
         )
     }
 
     #[test]
-    fn test_then_with_and_parser() {
+    fn test_and_parser() {
+        let mut test_vec = Vec::new();
+        test_vec.push(" i do more stuff");
         assert_eq!(
-            then_parser("And i do more stuff\n").unwrap(),
-            ("", " i do more stuff")
+            and_parser("And i do more stuff\n").unwrap(),
+            ("", test_vec)
         )
-    }
-
-    #[test]
-    fn test_build_scenario_outline() {
-        let filename = "src/foo.feature";
-        let file = File::open(filename).unwrap();
-        let buffered = BufReader::new(file);
-        let lines = buffered.lines();
-        let mut file_str = "".to_string();
-
-        for l in lines {
-            file_str = file_str + l.unwrap().trim() + "\n"
-        }
-
-        let mut expected_vec = Vec::new();
-        expected_vec.push("smoke");
-        expected_vec.push("wip");
-        let str_vec = expected_vec.iter().map(|&x| x.to_string()).collect();
-
-        let got = build_outline(&file_str).unwrap();
-        let expected = ScenarioOutline {
-            feature: "Fake Test Stuff".to_string(),
-            given: "I have a login".to_string(),
-            scenario: "This is a fake scenario".to_string(),
-            tags: str_vec,
-            when: "I type in a password and click login".to_string(),
-            then: "the page redirects".to_string(),
-        };
-
-        assert_eq!(got.0, "");
-        assert_eq!(got.1.feature, expected.feature);
-        assert_eq!(got.1.given, expected.given);
-        assert_eq!(got.1.scenario, expected.scenario);
-        assert_eq!(got.1.tags, expected.tags);
-        assert_eq!(got.1.when, expected.when);
-        assert_eq!(got.1.then, expected.then);
     }
 }
