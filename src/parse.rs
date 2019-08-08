@@ -1,5 +1,5 @@
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take_until};
+use nom::bytes::complete::{tag, take_until, take_while};
 use nom::combinator::opt;
 use nom::multi::many1;
 use nom::sequence::{delimited, preceded};
@@ -15,8 +15,10 @@ pub struct ScenarioOutline {
     then: String,
 }
 
-fn ws(i: &str) -> IResult<&str, &str> {
-    tag("\n")(i)
+fn take_ws(i: &str) -> IResult<&str, &str> {
+    let chars = " \t\r\n";
+  
+    take_while(move |c| chars.contains(c))(i)
 }
 
 fn until_n(i: &str) -> IResult<&str, &str> {
@@ -24,39 +26,39 @@ fn until_n(i: &str) -> IResult<&str, &str> {
 }
 
 fn language_parser(i: &str) -> IResult<&str, Option<&str>> {
-    opt(delimited(tag("# language:"), until_n, ws))(i)
+    opt(delimited(tag("# language:"), until_n, take_ws))(i)
 }
 
 fn tag_parser(i: &str) -> IResult<&str, Option<Vec<&str>>> {
-    opt(many1(delimited(tag("@"), until_n, ws)))(i)
+    opt(many1(delimited(tag("@"), until_n, take_ws)))(i)
 }
 
 fn comment_parser(i: &str) -> IResult<&str, Option<&str>> {
-    opt(delimited(tag("#"), until_n, ws))(i)
+    opt(delimited(tag("#"), until_n, take_ws))(i)
 }
 
 fn feature_parser(i: &str) -> IResult<&str, &str> {
-    delimited(tag("Feature:"), until_n, ws)(i)
+    delimited(tag("Feature:"), until_n, take_ws)(i)
 }
 
 fn scenario_parser(i: &str) -> IResult<&str, &str> {
-    delimited(tag("Scenario Outline:"), until_n, ws)(i)
+    delimited(tag("Scenario Outline:"), until_n, take_ws)(i)
 }
 
 fn given_parser(i: &str) -> IResult<&str, Vec<&str>> {
-    many1(delimited(tag("Given"), until_n, ws))(i)
+    many1(delimited(tag("Given"), until_n, take_ws))(i)
 }
 
 fn when_parser(i: &str) -> IResult<&str, Vec<&str>> {
-    many1(delimited(tag("When"), until_n, ws))(i)
+    many1(delimited(tag("When"), until_n, take_ws))(i)
 }
 
 fn then_parser(i: &str) -> IResult<&str, Vec<&str>> {
-    many1(delimited(tag("Then"), until_n, ws))(i)
+    many1(delimited(tag("Then"), until_n, take_ws))(i)
 }
 
 fn and_parser(i: &str) -> IResult<&str, Vec<&str>> {
-    many1(delimited(tag("And"), until_n, ws))(i)
+    many1(delimited(tag("And"), until_n, take_ws))(i)
 }
 
 fn then_and_parser(i: &str) -> IResult<&str, Vec<&str>> {
@@ -75,8 +77,16 @@ mod tests {
     use super::then_parser;
     use super::until_n;
     use super::when_parser;
-    use super::ws;
+    use super::take_ws;
+    
 
+    #[test]
+    fn test_take_ws() {
+        assert_eq!(
+            take_ws("           lol").unwrap(),
+            ("lol", "           ")
+        )
+    }
 
     #[test]
     fn test_language_parser() {
